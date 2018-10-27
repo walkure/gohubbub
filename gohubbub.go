@@ -49,9 +49,7 @@ type HttpRequester interface {
 // Client allows you to register a callback for PubSubHubbub subscriptions,
 // handlers will be executed when an update is received.
 type Client struct {
-	// Hostname or IP address and port that remote client will connect to, should
-	// be accessible by the hub. e.g. "push.myhost.com:4100"
-	self string
+	self string // URL of subscriber host
 
 	from          string                   // String passed in the "From" header.
 	running       bool                     // Whether the server is running.
@@ -251,7 +249,7 @@ func (client *Client) makeUnsubscribeRequeast(s *subscription) {
 }
 
 func (client *Client) formatCallbackURL(callback int) string {
-	return fmt.Sprintf("http://%s/push-callback/%d", client.self, callback)
+	return fmt.Sprintf("%s/push-callback/%d", client.self, callback)
 }
 
 func (client *Client) handleDefaultRequest(resp http.ResponseWriter, req *http.Request) {
