@@ -33,7 +33,7 @@ type Author struct {
 	Name string `xml:"name"`
 }
 
-var host = flag.String("host", "", "Host or IP to serve from")
+var host = flag.String("host", "", "URI of subscriber host")
 var port = flag.Int("port", 10000, "The port to serve from")
 
 func main() {
@@ -41,8 +41,8 @@ func main() {
 
 	log.Println("Medium Story Watcher Started...")
 
-	client := gohubbub.NewClient(fmt.Sprintf("%s:%d", *host, *port), "MediumStoryWatcher")
-	err := client.DiscoverAndSubscribe("https://medium.com/feed/latest", func(contentType string, body []byte) {
+	client := gohubbub.NewClient(*host, "MediumStoryWatcher")
+	err := client.DiscoverAndSubscribe("https://medium.com/feed/latest", "medium-secret", func(contentType string, body []byte) {
 		var feed Feed
 		xmlError := xml.Unmarshal(body, &feed)
 
