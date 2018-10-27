@@ -359,7 +359,6 @@ func (client *Client) handleCallback(resp http.ResponseWriter, req *http.Request
 					http.Error(resp, "Invalid Signature", http.StatusBadRequest)
 					return
 				}
-				log.Printf("Signature:%s", signature)
 
 				mac := hmac.New(hashAlg, []byte(s.SecretKey()))
 				mac.Write([]byte(requestBody))
