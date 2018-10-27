@@ -9,9 +9,15 @@ package gohubbub
 import (
 	"bytes"
 	"container/ring"
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"hash"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -25,6 +31,7 @@ import (
 type subscription struct {
 	hub        string
 	topic      string
+	secret     string
 	id         int
 	handler    func(string, []byte) // Content-Type, ResponseBody
 	lease      time.Duration
@@ -33,6 +40,12 @@ type subscription struct {
 
 func (s subscription) String() string {
 	return fmt.Sprintf("%s (#%d %s)", s.topic, s.id, s.lease)
+}
+
+func (s subscription) SecretKey() string {
+	mac := hmac.New(sha1.New, []byte(s.secret))
+	mac.Write([]byte(s.topic))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 var nilSubscription = &subscription{}
@@ -108,22 +121,23 @@ func (client *Client) Discover(topic string) (string, error) {
 
 // DiscoverAndSubscribe queries an RSS or Atom feed for the hub which it is
 // publishing to, then subscribes for updates.
-func (client *Client) DiscoverAndSubscribe(topic string, handler func(string, []byte)) error {
+func (client *Client) DiscoverAndSubscribe(topic, secret string, handler func(string, []byte)) error {
 	hub, err := client.Discover(topic)
 	if err != nil {
 		return fmt.Errorf("unable to find hub, %v", err)
 	}
-	client.Subscribe(hub, topic, handler)
+	client.Subscribe(hub, topic, secret, handler)
 	return nil
 }
 
 // Subscribe adds a handler will be called when an update notification is
 // received.  If a handler already exists for the given topic it will be
 // overridden.
-func (client *Client) Subscribe(hub, topic string, handler func(string, []byte)) {
+func (client *Client) Subscribe(hub, topic, secret string, handler func(string, []byte)) {
 	s := &subscription{
 		hub:     hub,
 		topic:   topic,
+		secret:  secret,
 		id:      subscriptionIdCounter,
 		handler: handler,
 	}
@@ -211,6 +225,11 @@ func (client *Client) makeSubscriptionRequest(s *subscription) {
 	body.Add("hub.topic", s.topic)
 	body.Add("hub.mode", "subscribe")
 	// body.Add("hub.lease_seconds", "60")
+	if len(s.secret) > 0 {
+		secretKey := s.SecretKey()
+		log.Printf("Use hub.secret : %s", secretKey)
+		body.Add("hub.secret", secretKey)
+	}
 
 	req, _ := http.NewRequest("POST", s.hub, bytes.NewBufferString(body.Encode()))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
@@ -313,6 +332,45 @@ func (client *Client) handleCallback(resp http.ResponseWriter, req *http.Request
 		} else {
 			log.Printf("Update for %s", s)
 			resp.Write([]byte{})
+
+			if len(s.secret) > 0 {
+				signature := strings.Split(req.Header.Get("x-hub-signature"), "=")
+				if len(signature) != 2 {
+					log.Printf("Signature not found or invalid %s", s)
+					http.Error(resp, "Invalid Subscription", http.StatusBadRequest)
+					return
+				}
+
+				var hashAlg func() hash.Hash
+
+				// Recognize algorithm
+				// https://www.w3.org/TR/websub/#recognized-algorithm-names
+				switch signature[0] {
+				case "sha1":
+					hashAlg = sha1.New
+				case "sha256":
+					hashAlg = sha256.New
+				case "sha384":
+					hashAlg = sha512.New384
+				case "sha512":
+					hashAlg = sha512.New
+				default:
+					log.Printf("HashAlg:%s is unknown. %s", signature[0], s)
+					http.Error(resp, "Invalid Signature", http.StatusBadRequest)
+					return
+				}
+				log.Printf("Signature:%s", signature)
+
+				mac := hmac.New(hashAlg, []byte(s.SecretKey()))
+				mac.Write([]byte(requestBody))
+				sum := hex.EncodeToString(mac.Sum(nil))
+
+				if !strings.EqualFold(signature[1], sum) {
+					log.Printf("Signature mismatch [%s][%s] %s", signature[1], sum, s)
+					http.Error(resp, "Invalid Signature", http.StatusBadRequest)
+					return
+				}
+			}
 
 			// Asynchronously notify the subscription handler, shouldn't affect response.
 			go client.broadcast(s, req.Header.Get("Content-Type"), requestBody)

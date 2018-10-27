@@ -45,7 +45,7 @@ func main() {
 	log.Println("PubSubHubbub Subscriber Started")
 
 	client := gohubbub.NewClient(*host, "Test App")
-	err := client.DiscoverAndSubscribe("http://push-pub.appspot.com/feed", func(contentType string, body []byte) {
+	err := client.DiscoverAndSubscribe("http://push-pub.appspot.com/feed", "test-secret", func(contentType string, body []byte) {
 		var feed Feed
 		xmlError := xml.Unmarshal(body, &feed)
 
