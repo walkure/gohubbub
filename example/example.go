@@ -21,7 +21,7 @@ import (
 	"log"
 	"time"
 
-	".."
+	"github.com/walkure/gohubbub"
 )
 
 type Feed struct {
