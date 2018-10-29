@@ -380,10 +380,11 @@ func (client *Client) handleCallback(resp http.ResponseWriter, req *http.Request
 
 func (client *Client) subscriptionForPath(path string) (*subscription, bool) {
 	parts := strings.Split(path, "/")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return nilSubscription, false
 	}
-	id, err := strconv.Atoi(parts[2])
+
+	id, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
 		return nilSubscription, false
 	}
