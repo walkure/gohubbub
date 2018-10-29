@@ -361,7 +361,7 @@ func (client *Client) handleCallback(resp http.ResponseWriter, req *http.Request
 				}
 
 				mac := hmac.New(hashAlg, []byte(s.SecretKey()))
-				mac.Write([]byte(requestBody))
+				mac.Write(requestBody)
 				sum := hex.EncodeToString(mac.Sum(nil))
 
 				if !strings.EqualFold(signature[1], sum) {
